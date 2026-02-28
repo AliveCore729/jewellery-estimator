@@ -18,8 +18,7 @@ const playfair = Playfair_Display({
 export const metadata: Metadata = {
   title: "Kanaka Jewellers — Estimation App",
   description:
-    "Professional Jewellery Estimation & Marketplace Web Application for Kanaka Jewellers. Create beautiful estimates, generate PDFs, and share with customers.",
-  keywords: ["jewellery", "estimation", "gold", "invoice", "Kanaka Jewellers"],
+    "Professional Jewellery Estimation & Marketplace Web Application for Kanaka Jewellers.",
 };
 
 export default function RootLayout({
