@@ -16,6 +16,12 @@ import {
   Coins,
   Trash2,
   Loader2,
+  Download,
+  Share2,
+  MessageCircle,
+  Link2,
+  Check,
+  Copy,
 } from "lucide-react";
 import { toast } from "sonner";
 import PageHeader from "@/components/common/PageHeader";
@@ -101,6 +107,15 @@ export default function EstimateDetailPage() {
   const [activeVariant, setActiveVariant] = useState(0);
   const [showDelete, setShowDelete] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isSharing, setIsSharing] = useState(false);
+  const [shareData, setShareData] = useState<{
+    shareUrl: string;
+    customerPhone: string;
+    customerName: string;
+  } | null>(null);
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [statusUpdating, setStatusUpdating] = useState(false);
 
   useEffect(() => {
     fetch(`/api/estimates/${id}`)
@@ -138,6 +153,67 @@ export default function EstimateDetailPage() {
     }
   };
 
+  const handleShare = async () => {
+    setIsSharing(true);
+    try {
+      const res = await fetch(`/api/estimates/${id}/share`, { method: "POST" });
+      const data = await res.json();
+      if (data.success) {
+        setShareData(data.data);
+        setShowShareModal(true);
+      } else {
+        toast.error(data.error || "Failed to create share link");
+      }
+    } catch {
+      toast.error("Failed to share");
+    } finally {
+      setIsSharing(false);
+    }
+  };
+
+  const handleCopyLink = () => {
+    if (shareData) {
+      navigator.clipboard.writeText(shareData.shareUrl);
+      setCopied(true);
+      toast.success("Link copied!");
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  const handleWhatsApp = () => {
+    if (!shareData || !estimate) return;
+    const phone = shareData.customerPhone.replace(/\D/g, "");
+    const phoneWithCountry = phone.startsWith("91") ? phone : `91${phone}`;
+    const message = encodeURIComponent(
+      `Dear ${shareData.customerName},\n\nHere is your jewellery estimate from Kanaka Jewellers:\n\n📋 ${estimate.estimateNumber}\n💎 ${estimate.productName}\n\nView estimate: ${shareData.shareUrl}\n\nThank you! 🙏`
+    );
+    window.open(`https://wa.me/${phoneWithCountry}?text=${message}`, "_blank");
+  };
+
+  const handleStatusUpdate = async (newStatus: string) => {
+    setStatusUpdating(true);
+    try {
+      const res = await fetch(`/api/estimates/${id}/status`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: newStatus }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setEstimate((prev) => (prev ? { ...prev, status: newStatus } : prev));
+        toast.success(`Status updated to ${newStatus}`);
+      }
+    } catch {
+      toast.error("Failed to update status");
+    } finally {
+      setStatusUpdating(false);
+    }
+  };
+
+  const handleDownloadPDF = () => {
+    window.print();
+  };
+
   if (isLoading) {
     return (
       <div className="space-y-6">
@@ -167,17 +243,57 @@ export default function EstimateDetailPage() {
           title={estimate.estimateNumber}
           description={`${estimate.productName}${estimate.category ? ` • ${estimate.category.name}` : ""}`}
           action={
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 flex-wrap">
               <EstimateStatusBadge status={estimate.status} />
+
+              {/* Status Dropdown */}
+              <select
+                value={estimate.status}
+                onChange={(e) => handleStatusUpdate(e.target.value)}
+                disabled={statusUpdating}
+                className="px-3 py-2 rounded-lg border border-warm-200 text-sm font-inter text-navy
+                  focus:outline-none focus:ring-2 focus:ring-gold/40 bg-white"
+              >
+                <option value="DRAFT">Draft</option>
+                <option value="SENT">Sent</option>
+                <option value="APPROVED">Approved</option>
+                <option value="REJECTED">Rejected</option>
+              </select>
+
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={handleDownloadPDF}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-lg border border-warm-200
+                  text-navy font-inter text-sm font-medium hover:bg-warm-50 transition-colors"
+              >
+                <Download className="w-4 h-4" />
+                PDF
+              </motion.button>
+
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={handleShare}
+                disabled={isSharing}
+                className="btn-gold flex items-center gap-2 text-sm"
+              >
+                {isSharing ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Share2 className="w-4 h-4" />
+                )}
+                Share
+              </motion.button>
+
               <motion.button
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
                 onClick={() => setShowDelete(true)}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-lg border border-red-200
-                  text-red-600 font-inter text-sm font-medium hover:bg-red-50 transition-colors"
+                className="flex items-center gap-2 px-3 py-2.5 rounded-lg border border-red-200
+                  text-red-600 font-inter text-sm hover:bg-red-50 transition-colors"
               >
                 <Trash2 className="w-4 h-4" />
-                Delete
               </motion.button>
             </div>
           }
@@ -536,6 +652,77 @@ export default function EstimateDetailPage() {
         variant="danger"
         isLoading={isDeleting}
       />
+
+      {/* Share Modal */}
+      {showShareModal && shareData && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-navy/40 backdrop-blur-sm"
+            onClick={() => setShowShareModal(false)}
+          />
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95, y: 10 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            className="relative bg-surface rounded-xl shadow-warm-xl border border-warm-200 
+              w-full max-w-md z-10 overflow-hidden"
+          >
+            <div className="p-6">
+              <h2 className="font-playfair text-xl font-bold text-navy mb-1">
+                Share Estimate
+              </h2>
+              <p className="text-sm text-warm-400 font-inter mb-6">
+                Send {estimate.estimateNumber} to {shareData.customerName}
+              </p>
+
+              {/* Share Link */}
+              <div className="mb-4">
+                <label className="text-xs text-warm-400 font-inter mb-1.5 block">Share Link</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    readOnly
+                    value={shareData.shareUrl}
+                    className="flex-1 px-3 py-2.5 rounded-lg border border-warm-200 bg-warm-50 
+                      text-sm font-inter text-navy truncate"
+                  />
+                  <motion.button
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    onClick={handleCopyLink}
+                    className={`p-2.5 rounded-lg transition-colors ${
+                      copied
+                        ? "bg-emerald-100 text-emerald-600"
+                        : "bg-warm-100 text-warm-500 hover:bg-warm-200"
+                    }`}
+                  >
+                    {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                  </motion.button>
+                </div>
+              </div>
+
+              {/* WhatsApp Button */}
+              <motion.button
+                whileHover={{ scale: 1.01 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={handleWhatsApp}
+                className="w-full flex items-center justify-center gap-3 px-4 py-3 rounded-lg
+                  bg-[#25D366] text-white font-inter font-medium text-sm
+                  hover:bg-[#20BD5A] transition-colors"
+              >
+                <MessageCircle className="w-5 h-5" />
+                Send via WhatsApp to {shareData.customerName}
+              </motion.button>
+
+              <button
+                onClick={() => setShowShareModal(false)}
+                className="w-full mt-3 px-4 py-2.5 text-sm text-warm-500 font-inter hover:text-navy transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
     </div>
   );
 }
