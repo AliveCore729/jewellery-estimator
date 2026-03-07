@@ -19,9 +19,9 @@ import {
   Download,
   Share2,
   MessageCircle,
-  Link2,
   Check,
   Copy,
+  Files,
 } from "lucide-react";
 import { toast } from "sonner";
 import PageHeader from "@/components/common/PageHeader";
@@ -116,6 +116,7 @@ export default function EstimateDetailPage() {
   const [showShareModal, setShowShareModal] = useState(false);
   const [copied, setCopied] = useState(false);
   const [statusUpdating, setStatusUpdating] = useState(false);
+  const [isDuplicating, setIsDuplicating] = useState(false);
 
   useEffect(() => {
     fetch(`/api/estimates/${id}`)
@@ -214,6 +215,28 @@ export default function EstimateDetailPage() {
     window.print();
   };
 
+  const handleDuplicate = async () => {
+    setIsDuplicating(true);
+    try {
+      const res = await fetch("/api/estimates/duplicate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ estimateId: id }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast.success(`Duplicated as ${data.data.estimateNumber}`);
+        router.push(`/estimates/${data.data.id}`);
+      } else {
+        toast.error(data.error || "Failed to duplicate");
+      }
+    } catch {
+      toast.error("Failed to duplicate");
+    } finally {
+      setIsDuplicating(false);
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="space-y-6">
@@ -256,8 +279,10 @@ export default function EstimateDetailPage() {
               >
                 <option value="DRAFT">Draft</option>
                 <option value="SENT">Sent</option>
-                <option value="APPROVED">Approved</option>
+                <option value="ACCEPTED">Accepted</option>
                 <option value="REJECTED">Rejected</option>
+                <option value="EXPIRED">Expired</option>
+                <option value="INVOICED">Invoiced</option>
               </select>
 
               <motion.button
@@ -269,6 +294,22 @@ export default function EstimateDetailPage() {
               >
                 <Download className="w-4 h-4" />
                 PDF
+              </motion.button>
+
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={handleDuplicate}
+                disabled={isDuplicating}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-lg border border-warm-200
+                  text-navy font-inter text-sm font-medium hover:bg-warm-50 transition-colors"
+              >
+                {isDuplicating ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Files className="w-4 h-4" />
+                )}
+                Duplicate
               </motion.button>
 
               <motion.button

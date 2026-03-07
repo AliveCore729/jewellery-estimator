@@ -95,6 +95,28 @@ export default function EstimatesPage() {
     }
   };
 
+  const handleDuplicate = async (estimateId: string) => {
+    try {
+      toast.loading("Duplicating...");
+      const res = await fetch("/api/estimates/duplicate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ estimateId }),
+      });
+      const data = await res.json();
+      toast.dismiss();
+      if (data.success) {
+        toast.success(`Duplicated as ${data.data.estimateNumber}`);
+        router.push(`/estimates/${data.data.id}`);
+      } else {
+        toast.error(data.error || "Failed to duplicate");
+      }
+    } catch {
+      toast.dismiss();
+      toast.error("Failed to duplicate");
+    }
+  };
+
   return (
     <div>
       <PageHeader
@@ -295,8 +317,7 @@ export default function EstimatesPage() {
                               onClick={(e) => {
                                 e.stopPropagation();
                                 setOpenDropdown(null);
-                                // TODO: Duplicate estimate
-                                toast.info("Duplicate feature coming soon!");
+                                handleDuplicate(est.id);
                               }}
                               className="w-full flex items-center gap-2.5 px-3.5 py-2 text-sm text-navy 
                                 hover:bg-warm-50 transition-colors font-inter"

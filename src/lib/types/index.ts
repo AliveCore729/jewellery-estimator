@@ -24,21 +24,38 @@ export interface PaginatedResponse<T> {
 // ============================================
 
 export interface DashboardStats {
-  estimatesToday: number;
-  estimatesThisMonth: number;
-  totalCustomers: number;
-  todaysGoldRate: number | null;
+  stats: {
+    totalEstimates: number;
+    estimatesThisMonth: number;
+    estimateChange: number;
+    pendingEstimates: number;
+    acceptedThisMonth: number;
+    acceptedChange: number;
+    totalCustomers: number;
+    customersThisMonth: number;
+    revenueThisMonth: number;
+    revenueChange: number;
+  };
   recentEstimates: RecentEstimate[];
+  recentActivity: RecentActivity[];
 }
 
 export interface RecentEstimate {
   id: string;
   estimateNumber: string;
   customerName: string;
-  productName: string;
   grandTotal: number;
   status: string;
   createdAt: string;
+}
+
+export interface RecentActivity {
+  id: string;
+  action: string;
+  entityType: string;
+  userName: string;
+  createdAt: string;
+  details: any;
 }
 
 // ============================================

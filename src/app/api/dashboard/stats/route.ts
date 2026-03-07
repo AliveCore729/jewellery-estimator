@@ -20,92 +20,181 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Get today's date range
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
-
-    // Get first day of current month
-    const firstOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+    // Get date ranges
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0);
 
     // Run all queries in parallel
     const [
-      estimatesToday,
+      totalEstimates,
       estimatesThisMonth,
+      estimatesLastMonth,
+      pendingEstimates,
+      acceptedThisMonth,
+      acceptedLastMonth,
       totalCustomers,
-      goldRate,
+      customersThisMonth,
+      revenueThisMonthData,
+      revenueLastMonthData,
       recentEstimates,
+      recentActivity,
     ] = await Promise.all([
-      // Estimates created today
-      prisma.estimate.count({
-        where: {
-          createdAt: { gte: today, lt: tomorrow },
-        },
-      }),
+      // Total estimates
+      prisma.estimate.count(),
 
       // Estimates this month
       prisma.estimate.count({
+        where: { createdAt: { gte: startOfMonth } },
+      }),
+
+      // Estimates last month
+      prisma.estimate.count({
         where: {
-          createdAt: { gte: firstOfMonth },
+          createdAt: { gte: startOfLastMonth, lte: endOfLastMonth },
+        },
+      }),
+
+      // Pending (DRAFT + SENT)
+      prisma.estimate.count({
+        where: { status: { in: ["DRAFT", "SENT"] } },
+      }),
+
+      // Accepted this month
+      prisma.estimate.count({
+        where: {
+          status: "ACCEPTED",
+          updatedAt: { gte: startOfMonth },
+        },
+      }),
+
+      // Accepted last month
+      prisma.estimate.count({
+        where: {
+          status: "ACCEPTED",
+          updatedAt: { gte: startOfLastMonth, lte: endOfLastMonth },
         },
       }),
 
       // Total customers
       prisma.customer.count(),
 
-      // Latest Gold 22K rate
-      prisma.materialRate.findFirst({
+      // Customers this month
+      prisma.customer.count({
+        where: { createdAt: { gte: startOfMonth } },
+      }),
+
+      // Revenue this month (grandTotal of accepted estimates)
+      prisma.estimateVariant.findMany({
         where: {
-          material: {
-            name: "Gold 22K",
+          estimate: {
+            status: "ACCEPTED",
+            updatedAt: { gte: startOfMonth },
           },
+          isRecommended: true,
         },
-        orderBy: {
-          effectiveDate: "desc",
+        select: { grandTotal: true },
+      }),
+
+      // Revenue last month
+      prisma.estimateVariant.findMany({
+        where: {
+          estimate: {
+            status: "ACCEPTED",
+            updatedAt: { gte: startOfLastMonth, lte: endOfLastMonth },
+          },
+          isRecommended: true,
         },
-        select: {
-          ratePerUnit: true,
+        select: { grandTotal: true },
+      }),
+
+      // Recent estimates
+      prisma.estimate.findMany({
+        take: 5,
+        orderBy: { createdAt: "desc" },
+        include: {
+          customer: { select: { name: true } },
+          variants: {
+            where: { isRecommended: true },
+            select: { grandTotal: true },
+            take: 1,
+          },
         },
       }),
 
-      // Recent 10 estimates
-      prisma.estimate.findMany({
-        take: 10,
+      // Recent activity
+      prisma.activityLog.findMany({
+        take: 8,
         orderBy: { createdAt: "desc" },
-        select: {
-          id: true,
-          estimateNumber: true,
-          productName: true,
-          status: true,
-          createdAt: true,
-          customer: {
-            select: { name: true },
-          },
-          variants: {
-            take: 1,
-            orderBy: { sortOrder: "asc" },
-            select: { grandTotal: true },
-          },
+        include: {
+          user: { select: { name: true } },
         },
       }),
     ]);
 
+    // Calculate revenue
+    const revenueThisMonth = revenueThisMonthData.reduce(
+      (sum: number, v: any) => sum + Number(v.grandTotal),
+      0
+    );
+    const revenueLastMonth = revenueLastMonthData.reduce(
+      (sum: number, v: any) => sum + Number(v.grandTotal),
+      0
+    );
+
+    // Calculate % changes
+    const estimateChange =
+      estimatesLastMonth > 0
+        ? Math.round(((estimatesThisMonth - estimatesLastMonth) / estimatesLastMonth) * 100)
+        : estimatesThisMonth > 0
+        ? 100
+        : 0;
+
+    const revenueChange =
+      revenueLastMonth > 0
+        ? Math.round(((revenueThisMonth - revenueLastMonth) / revenueLastMonth) * 100)
+        : revenueThisMonth > 0
+        ? 100
+        : 0;
+
+    const acceptedChange =
+      acceptedLastMonth > 0
+        ? Math.round(((acceptedThisMonth - acceptedLastMonth) / acceptedLastMonth) * 100)
+        : acceptedThisMonth > 0
+        ? 100
+        : 0;
+
     return NextResponse.json({
       success: true,
       data: {
-        estimatesToday,
-        estimatesThisMonth,
-        totalCustomers,
-        todaysGoldRate: goldRate ? Number(goldRate.ratePerUnit) : null,
-        recentEstimates: recentEstimates.map((est) => ({
-          id: est.id,
-          estimateNumber: est.estimateNumber,
-          customerName: est.customer.name,
-          productName: est.productName,
-          grandTotal: est.variants[0] ? Number(est.variants[0].grandTotal) : 0,
-          status: est.status,
-          createdAt: est.createdAt.toISOString(),
+        stats: {
+          totalEstimates,
+          estimatesThisMonth,
+          estimateChange,
+          pendingEstimates,
+          acceptedThisMonth,
+          acceptedChange,
+          totalCustomers,
+          customersThisMonth,
+          revenueThisMonth,
+          revenueChange,
+        },
+        recentEstimates: recentEstimates.map((e: any) => ({
+          id: e.id,
+          estimateNumber: e.estimateNumber,
+          customerName: e.customer.name,
+          status: e.status,
+          grandTotal: e.variants[0] ? Number(e.variants[0].grandTotal) : 0,
+          createdAt: e.createdAt,
+        })),
+        recentActivity: recentActivity.map((a: any) => ({
+          id: a.id,
+          action: a.action,
+          entityType: a.entityType,
+          userName: a.user?.name || "System",
+          createdAt: a.createdAt,
+          details: a.details,
         })),
       },
     });
